@@ -1,15 +1,24 @@
 from fastapi import FastAPI, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from bson import ObjectId
 from db_connection import get_tasks_collection
 from datetime import datetime
+import os
 
 app = FastAPI()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    favicon_path = os.path.join("static", "favicon.svg")
+    if os.path.exists(favicon_path):
+        return FileResponse(favicon_path, media_type="image/svg+xml")
+    return HTMLResponse(status_code=404)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -38,7 +47,7 @@ def home(request: Request):
             progress_percentage = round((completed_count / total_count) * 100)
     except Exception as e:
         error_message = (
-            "Could not connect to MongoDB. Please ensure your MongoDB Atlas credentials "
+            "Could not connect to MongoDB. Please ensure your MongoDB credentials "
             "and network access (0.0.0.0/0 IP whitelist) are configured."
         )
         print(f"Database connection error: {e}")
