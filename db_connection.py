@@ -1,4 +1,5 @@
 import os
+import certifi
 from pymongo import MongoClient
 from dotenv import load_dotenv
 
@@ -12,7 +13,11 @@ client = None
 def get_database():
     global client
     if client is None:
-        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+        client = MongoClient(
+            MONGO_URI,
+            tlsCAFile=certifi.where(),
+            serverSelectionTimeoutMS=5000
+        )
     return client[MONGO_DB_NAME]
 
 def get_tasks_collection():
