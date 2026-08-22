@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>To Do App</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <h1>Task Manager</h1>
+
+    {% if error %}
+    <div style="background: #ffebee; color: #c62828; padding: 12px; margin: 15px auto; max-width: 600px; border-radius: 6px; border: 1px solid #ef9a9a; text-align: left; font-size: 14px;">
+        <strong>⚠️ Database Connection Notice:</strong> {{ error }}
+    </div>
+    {% endif %}
+
+    <form action="/add" method="post">
+        <input type="text" name="task" placeholder="Enter task" required>
+        <select name="priority">
+            <option>High</option>
+            <option>Medium</option>
+            <option>Low</option>
+        </select>
+        <button type="submit">Add Task</button>
+    </form>
+
+    <table>
+        <tr>
+            <th>Task</th>
+            <th>Status</th>
+            <th>Priority</th>
+            <th>Actions</th>
+        </tr>
+        {% for task in tasks %}
+        <tr>
+            <td>{{ task.task_title }}</td>
+            <td>{{ task.status }}</td>
+            <td>{{ task.priority }}</td>
+            <td>
+                {% if task.status != 'Completed' %}
+                <a href="/complete/{{ task.id }}">Complete</a>
+                {% endif %}
+                <a href="/delete/{{ task.id }}">Delete</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+
+</body>
+</html>
