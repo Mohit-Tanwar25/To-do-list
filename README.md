@@ -1,24 +1,20 @@
-# ⚡ TaskMaster — Modern Minimalist To-Do App
+# ✅ TaskMaster - Daily To-Do List Application (FastAPI + MongoDB)
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-4EA94B?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-
-A clean, modern, and minimal **productivity & task management dashboard** built with **FastAPI**, **Jinja2**, and **MongoDB Atlas**. Designed with a distraction-free SaaS user interface, real-time metrics, live search, and smooth modal confirmations.
+A modern, responsive **Daily To-Do List Web Application** built with **FastAPI** and **MongoDB (PyMongo)** with per-day task isolation and persistent saving.
 
 ---
 
 ## ✨ Features
 
-- 🎯 **Minimal SaaS Dashboard**: Clean, distraction-free productivity layout inspired by modern web apps.
-- 📊 **Real-time Analytics**: Live statistics cards tracking Total Tasks, Pending Tasks, Completed Tasks, and Progress Completion Rate.
-- ⚡ **Real-time Search & Filtering**: Instant client-side search and category filtering (**All**, **Pending**, **Completed**) with zero page reloads.
-- 🏷️ **Priority Tagging**: Organize tasks by priority levels (🔴 High, 🟡 Medium, 🟢 Low) with tailored color badges.
-- 🛡️ **Modern Confirmation Modal**: Custom non-intrusive modal dialog for task deletions, replacing native browser alerts.
-- ☁️ **Cloud Database**: Persistent cloud storage powered by **MongoDB Atlas** with PyMongo.
-- 📱 **Fully Responsive**: Fluid desktop, tablet, and mobile interface with clean touch targets.
-- 🎨 **Custom Favicon**: Distinctive vector SVG browser tab icon.
+- 📅 **Daily Task Isolation**: Each day's tasks are stored and managed separately (`YYYY-MM-DD`).
+- 💾 **Dedicated Save Button**: Save all tasks for the selected date with one click; unsaved changes indicator prevents accidental data loss.
+- 📆 **Interactive Date Navigation**: Fast date switcher (Prev / Today / Next) and calendar date picker.
+- ✏️ **Full Task Management**: Add, inline edit, toggle completion, and delete tasks.
+- 🏷️ **Priority Badges**: Organize tasks by priority level (High, Medium, Low).
+- 📊 **Real-Time Productivity Statistics**: Dynamic counters for total, pending, completed tasks, and completion rate.
+- 🔍 **Live Search & Filter Tabs**: Filter by All, Pending, Completed, or search by keyword in real time.
+- ☁️ **Cloud Database Persistence**: Backed by MongoDB Atlas with connection pooling and retry capabilities.
+- 🚀 **Render Ready**: Optimized for direct deployment on Render.
 
 ---
 
@@ -60,31 +56,36 @@ MONGO_DB_NAME=todo_app
 uvicorn main:app --reload
 ```
 
-Open your browser and navigate to:
-👉 **[http://127.0.0.1:8000](http://127.0.0.1:8000)**
-
-Interactive API Swagger documentation is available at:
-👉 **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)**
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser.
 
 ---
 
-## 📁 Project Structure
+## 📡 API Endpoints
 
-```
-├── main.py              # FastAPI application routes & endpoints
-├── db_connection.py     # MongoDB Atlas client connection logic
-├── requirements.txt     # Python dependencies
-├── .env.example         # Template for environment variables
-├── .gitignore           # Git ignore rules (protects credentials)
-├── static/
-│   ├── favicon.svg      # Custom SVG tab icon
-│   └── style.css        # Dashboard styling & responsive layout
-└── templates/
-    └── index.html       # Jinja2 dashboard template with embedded styles & modals
-```
+- `GET /`: Server-side rendered dashboard (accepts optional `?date=YYYY-MM-DD`).
+- `GET /api/tasks?date=YYYY-MM-DD`: Fetch tasks and statistics for a specific date.
+- `POST /api/tasks/save`: Bulk save all tasks for a specific date.
+- `POST /api/tasks`: Create a single task for a date.
+- `PUT /api/tasks/{task_id}`: Update task title, priority, or completion status.
+- `POST /api/tasks/{task_id}/toggle`: Toggle task completion status.
+- `DELETE /api/tasks/{task_id}`: Delete task by ID.
 
 ---
 
-## 📄 License
+## 🚢 Deploying to Render
 
-This project is licensed under the [MIT License](LICENSE).
+1. Push your changes to your GitHub repository:
+   ```bash
+   git add .
+   git commit -m "Add daily task saving and date navigation"
+   git push origin main
+   ```
+2. In your **Render Dashboard**:
+   - Go to your Web Service.
+   - Under **Settings**:
+     - **Build Command**: `pip install -r requirements.txt`
+     - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+   - Under **Environment Variables**:
+     - Ensure `MONGO_URI` is set to your MongoDB Atlas connection string.
+     - Ensure `MONGO_DB_NAME` is set (defaults to `todo_app`).
+3. Click **Manual Deploy** -> **Deploy latest commit** (or auto-deploy on push).
