@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from bson import ObjectId
 from db_connection import get_tasks_collection
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import os
 import re
 
@@ -16,6 +16,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+VALID_CATEGORIES = ["General", "Work", "Personal", "Study", "Health", "Finance"]
+VALID_PRIORITIES = ["High", "Medium", "Low"]
 
 
 def get_today_date_str() -> str:
@@ -49,6 +52,19 @@ def normalize_task_doc(doc: dict, target_date: str = None) -> dict:
         status = "Completed" if completed else "Pending"
 
     priority = doc.get("priority", "Medium")
+    if priority not in VALID_PRIORITIES:
+        priority = "Medium"
+
+    category = doc.get("category", "General")
+    if category not in VALID_CATEGORIES:
+        category = "General"
+
+    notes = doc.get("notes", "") or ""
+    order = doc.get("order", 0)
+    try:
+        order = int(order)
+    except (ValueError, TypeError):
+        order = 0
     
     # Determine date
     task_date = doc.get("date")
@@ -65,6 +81,9 @@ def normalize_task_doc(doc: dict, target_date: str = None) -> dict:
         "status": status,
         "completed": completed,
         "priority": priority,
+        "category": category,
+        "notes": notes,
+        "order": order,
         "date": task_date,
         "created_at": doc.get("created_at"),
         "updated_at": doc.get("updated_at")
@@ -75,7 +94,6 @@ def fetch_tasks_for_date(date_str: str):
     """Fetches and computes statistics for tasks on a given date."""
     tasks_collection = get_tasks_collection()
     
-    # Query tasks explicitly saved with this date OR legacy tasks created on this date without date field
     try:
         dt_start = datetime.strptime(date_str, "%Y-%m-%d")
         dt_end = dt_start.replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -98,7 +116,8 @@ def fetch_tasks_for_date(date_str: str):
             "created_at": {"$gte": dt_start, "$lte": dt_end}
         })
 
-    raw_tasks = list(tasks_collection.find(query).sort("_id", -1))
+    # Sort by order ascending, then _id descending
+    raw_tasks = list(tasks_collection.find(query).sort([("order", 1), ("_id", -1)]))
     
     tasks = []
     completed_count = 0
@@ -125,6 +144,81 @@ def fetch_tasks_for_date(date_str: str):
     }
 
 
+def calculate_user_streak():
+    """Computes current streak of consecutive days with completed tasks and 7-day activity."""
+    tasks_collection = get_tasks_collection()
+    now_utc = datetime.now(timezone.utc)
+    today_date = now_utc.date()
+
+    # Find distinct dates with at least one completed task
+    completed_tasks = list(tasks_collection.find(
+        {"$or": [{"status": "Completed"}, {"completed": True}]},
+        {"date": 1, "created_at": 1}
+    ))
+
+    completed_dates = set()
+    for doc in completed_tasks:
+        d_str = doc.get("date")
+        if d_str and is_valid_date(d_str):
+            completed_dates.add(d_str)
+        elif isinstance(doc.get("created_at"), datetime):
+            completed_dates.add(doc["created_at"].strftime("%Y-%m-%d"))
+
+    # Calculate streak (counting backwards from today or yesterday)
+    streak = 0
+    check_date = today_date
+    today_str = today_date.strftime("%Y-%m-%d")
+
+    # If today has completed tasks, streak starts from today
+    # Otherwise check if yesterday had completed tasks to keep the streak alive
+    if today_str in completed_dates:
+        streak += 1
+        check_date = check_date - timedelta(days=1)
+    else:
+        yesterday_str = (today_date - timedelta(days=1)).strftime("%Y-%m-%d")
+        if yesterday_str in completed_dates:
+            check_date = today_date - timedelta(days=1)
+        else:
+            check_date = None
+
+    while check_date is not None:
+        c_str = check_date.strftime("%Y-%m-%d")
+        if c_str in completed_dates:
+            streak += 1
+            check_date = check_date - timedelta(days=1)
+        else:
+            break
+
+    # Build 7-day mini heatmap (last 7 days ending today)
+    heatmap = []
+    for i in range(6, -1, -1):
+        day = today_date - timedelta(days=i)
+        day_str = day.strftime("%Y-%m-%d")
+        day_name = day.strftime("%a") # e.g. Mon, Tue
+        day_number = day.strftime("%d")
+
+        # Check total and completed for this day
+        day_tasks = fetch_tasks_for_date(day_str)
+        t_count = day_tasks["total_count"]
+        c_count = day_tasks["completed_count"]
+
+        heatmap.append({
+            "date": day_str,
+            "day_name": day_name,
+            "day_number": day_number,
+            "is_today": (day_str == today_str),
+            "total_count": t_count,
+            "completed_count": c_count,
+            "has_activity": (c_count > 0),
+            "all_completed": (t_count > 0 and c_count == t_count)
+        })
+
+    return {
+        "streak": streak,
+        "heatmap": heatmap
+    }
+
+
 # ---------------- Pydantic Request Models ----------------
 
 class TaskItemPayload(BaseModel):
@@ -133,6 +227,9 @@ class TaskItemPayload(BaseModel):
     status: Optional[str] = "Pending"
     completed: Optional[bool] = False
     priority: Optional[str] = "Medium"
+    category: Optional[str] = "General"
+    notes: Optional[str] = ""
+    order: Optional[int] = 0
     date: Optional[str] = None
 
 
@@ -144,14 +241,19 @@ class SaveDayTasksRequest(BaseModel):
 class CreateTaskRequest(BaseModel):
     task: str
     priority: Optional[str] = "Medium"
+    category: Optional[str] = "General"
+    notes: Optional[str] = ""
     date: Optional[str] = None
 
 
 class UpdateTaskRequest(BaseModel):
     task_title: Optional[str] = None
     priority: Optional[str] = None
+    category: Optional[str] = None
+    notes: Optional[str] = None
     status: Optional[str] = None
     completed: Optional[bool] = None
+    order: Optional[int] = None
 
 
 # ---------------- Web Routes (HTML) ----------------
@@ -176,9 +278,11 @@ def home(request: Request, date: Optional[str] = None):
         "pending_count": 0,
         "progress_percentage": 0
     }
+    streak_data = {"streak": 0, "heatmap": []}
 
     try:
         tasks_data = fetch_tasks_for_date(selected_date)
+        streak_data = calculate_user_streak()
     except Exception as e:
         error_message = (
             "Could not connect to MongoDB. Please ensure your MongoDB credentials "
@@ -196,7 +300,9 @@ def home(request: Request, date: Optional[str] = None):
             "total_count": tasks_data["total_count"],
             "completed_count": tasks_data["completed_count"],
             "pending_count": tasks_data["pending_count"],
-            "progress_percentage": tasks_data["progress_percentage"]
+            "progress_percentage": tasks_data["progress_percentage"],
+            "streak": streak_data["streak"],
+            "heatmap": streak_data["heatmap"]
         }
     )
 
@@ -215,10 +321,20 @@ def get_tasks_api(date: Optional[str] = Query(None)):
         raise HTTPException(status_code=500, detail=f"Failed to fetch tasks: {str(e)}")
 
 
+@app.get("/api/stats/streak")
+def get_streak_api():
+    """Fetch user daily streak and 7-day activity heatmap."""
+    try:
+        return calculate_user_streak()
+    except Exception as e:
+        print(f"API Error fetching streak: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch streak: {str(e)}")
+
+
 @app.post("/api/tasks/save")
 def save_day_tasks_api(payload: SaveDayTasksRequest):
     """
-    Saves all tasks for a specific date in one request.
+    Saves all tasks for a specific date in one request, preserving ordering, categories, and notes.
     Existing tasks for other dates are NEVER touched.
     """
     date_str = payload.date.strip()
@@ -230,22 +346,23 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
         now = datetime.now(timezone.utc)
         kept_object_ids = []
 
-        for item in payload.tasks:
+        for index, item in enumerate(payload.tasks):
             title = item.task_title.strip()
             if not title:
                 continue
 
             status = "Completed" if (item.completed or item.status == "Completed") else "Pending"
-            priority = item.priority if item.priority in ["High", "Medium", "Low"] else "Medium"
+            priority = item.priority if item.priority in VALID_PRIORITIES else "Medium"
+            category = item.category if item.category in VALID_CATEGORIES else "General"
+            notes = item.notes.strip() if item.notes else ""
+            order = item.order if item.order is not None else index
             completed = (status == "Completed")
 
-            # Check if this task already has a valid MongoDB ObjectId
             doc_id = None
             if item.id and ObjectId.is_valid(item.id):
                 doc_id = ObjectId(item.id)
 
             if doc_id:
-                # Update existing document
                 tasks_collection.update_one(
                     {"_id": doc_id},
                     {
@@ -254,6 +371,9 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
                             "status": status,
                             "completed": completed,
                             "priority": priority,
+                            "category": category,
+                            "notes": notes,
+                            "order": order,
                             "date": date_str,
                             "updated_at": now
                         }
@@ -261,12 +381,14 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
                 )
                 kept_object_ids.append(doc_id)
             else:
-                # Insert new document
                 result = tasks_collection.insert_one({
                     "task_title": title,
                     "status": status,
                     "completed": completed,
                     "priority": priority,
+                    "category": category,
+                    "notes": notes,
+                    "order": order,
                     "date": date_str,
                     "created_at": now,
                     "updated_at": now
@@ -274,7 +396,6 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
                 kept_object_ids.append(result.inserted_id)
 
         # Delete any tasks that belonged to this specific date but were removed in this save
-        # NEVER delete tasks from other dates!
         try:
             dt_start = datetime.strptime(date_str, "%Y-%m-%d")
             dt_end = dt_start.replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -301,12 +422,14 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
         }
         tasks_collection.delete_many(delete_query)
 
-        # Return updated tasks & statistics for this date
         updated_data = fetch_tasks_for_date(date_str)
+        streak_data = calculate_user_streak()
         return {
             "success": True,
             "message": "Tasks saved successfully!",
-            **updated_data
+            **updated_data,
+            "streak": streak_data["streak"],
+            "heatmap": streak_data["heatmap"]
         }
     except Exception as e:
         print(f"API Error saving tasks: {e}")
@@ -321,7 +444,9 @@ def create_task_api(payload: CreateTaskRequest):
         raise HTTPException(status_code=400, detail="Task title cannot be empty.")
 
     target_date = payload.date if (payload.date and is_valid_date(payload.date)) else get_today_date_str()
-    priority = payload.priority if payload.priority in ["High", "Medium", "Low"] else "Medium"
+    priority = payload.priority if payload.priority in VALID_PRIORITIES else "Medium"
+    category = payload.category if payload.category in VALID_CATEGORIES else "General"
+    notes = payload.notes.strip() if payload.notes else ""
     now = datetime.now(timezone.utc)
 
     try:
@@ -331,6 +456,9 @@ def create_task_api(payload: CreateTaskRequest):
             "status": "Pending",
             "completed": False,
             "priority": priority,
+            "category": category,
+            "notes": notes,
+            "order": 0,
             "date": target_date,
             "created_at": now,
             "updated_at": now
@@ -343,6 +471,9 @@ def create_task_api(payload: CreateTaskRequest):
             "status": "Pending",
             "completed": False,
             "priority": priority,
+            "category": category,
+            "notes": notes,
+            "order": 0,
             "date": target_date
         }
     except Exception as e:
@@ -352,7 +483,7 @@ def create_task_api(payload: CreateTaskRequest):
 
 @app.put("/api/tasks/{task_id}")
 def update_task_api(task_id: str, payload: UpdateTaskRequest):
-    """Update task title, priority, or status."""
+    """Update task title, priority, category, notes, or status."""
     if not ObjectId.is_valid(task_id):
         raise HTTPException(status_code=400, detail="Invalid task ID.")
 
@@ -361,8 +492,14 @@ def update_task_api(task_id: str, payload: UpdateTaskRequest):
         title = payload.task_title.strip()
         if title:
             update_fields["task_title"] = title
-    if payload.priority is not None and payload.priority in ["High", "Medium", "Low"]:
+    if payload.priority is not None and payload.priority in VALID_PRIORITIES:
         update_fields["priority"] = payload.priority
+    if payload.category is not None and payload.category in VALID_CATEGORIES:
+        update_fields["category"] = payload.category
+    if payload.notes is not None:
+        update_fields["notes"] = payload.notes.strip()
+    if payload.order is not None:
+        update_fields["order"] = int(payload.order)
     if payload.completed is not None:
         update_fields["completed"] = payload.completed
         update_fields["status"] = "Completed" if payload.completed else "Pending"
@@ -434,6 +571,7 @@ def delete_task_api(task_id: str):
 def add_task_form(
     task: str = Form(...),
     priority: str = Form("Medium"),
+    category: str = Form("General"),
     date: Optional[str] = Form(None)
 ):
     target_date = date if (date and is_valid_date(date)) else get_today_date_str()
@@ -446,7 +584,10 @@ def add_task_form(
                 "task_title": task_text,
                 "status": "Pending",
                 "completed": False,
-                "priority": priority,
+                "priority": priority if priority in VALID_PRIORITIES else "Medium",
+                "category": category if category in VALID_CATEGORIES else "General",
+                "notes": "",
+                "order": 0,
                 "date": target_date,
                 "created_at": now,
                 "updated_at": now
