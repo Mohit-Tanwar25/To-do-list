@@ -12,7 +12,7 @@ client = None
 def get_database():
     global client
     if client is None:
-        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+        client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=15000, connectTimeoutMS=15000, retryWrites=True)
     return client[MONGO_DB_NAME]
 
 def get_tasks_collection():
