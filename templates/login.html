@@ -13,6 +13,86 @@
     <link rel="stylesheet" href="/static/style.css">
 
     <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.22) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.20) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.22) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(139, 92, 246, 0.20) 0px, transparent 50%),
+                radial-gradient(at 50% 50%, rgba(244, 63, 94, 0.10) 0px, transparent 55%),
+                #f8fafc;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+            transition: background 0.3s ease;
+        }
+
+        [data-theme="dark"] body {
+            background: 
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.28) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(217, 70, 239, 0.22) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.25) 0px, transparent 50%),
+                radial-gradient(at 0% 100%, rgba(124, 58, 237, 0.25) 0px, transparent 50%),
+                #090d16;
+        }
+
+        /* Dynamic Animated Glowing Aurora Blobs */
+        .aurora-mesh {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .aurora-blob {
+            position: absolute;
+            filter: blur(90px);
+            opacity: 0.65;
+            border-radius: 50%;
+            animation: floatBlob 16s ease-in-out infinite alternate;
+        }
+
+        .blob-1 {
+            width: 520px;
+            height: 520px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.6), rgba(168, 85, 247, 0.35));
+            top: -100px;
+            left: -80px;
+        }
+
+        .blob-2 {
+            width: 480px;
+            height: 480px;
+            background: radial-gradient(circle, rgba(236, 72, 153, 0.5), rgba(59, 130, 246, 0.3));
+            bottom: -80px;
+            right: -80px;
+            animation-duration: 20s;
+            animation-delay: -4s;
+        }
+
+        .blob-3 {
+            width: 420px;
+            height: 420px;
+            background: radial-gradient(circle, rgba(6, 182, 212, 0.5), rgba(16, 185, 129, 0.3));
+            top: 35%;
+            left: 60%;
+            animation-duration: 18s;
+            animation-delay: -8s;
+        }
+
+        @keyframes floatBlob {
+            0% { transform: translate(0px, 0px) scale(1); }
+            50% { transform: translate(60px, 35px) scale(1.1); }
+            100% { transform: translate(-35px, 65px) scale(0.95); }
+        }
+
         .login-page-container {
             min-height: 100vh;
             display: flex;
@@ -23,19 +103,58 @@
             z-index: 2;
         }
 
+        /* Gradient Glassmorphic Card */
         .login-card {
-            background: var(--bg-card, rgba(255, 255, 255, 0.94));
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--border-color, #e2e8f0);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.1), 0 0 25px -5px var(--primary-glow, rgba(37, 99, 235, 0.15));
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.92) 0%, rgba(248, 250, 252, 0.85) 100%);
+            backdrop-filter: blur(28px);
+            -webkit-backdrop-filter: blur(28px);
+            border: 1.5px solid rgba(255, 255, 255, 0.85);
+            border-radius: 24px;
+            box-shadow: 
+                0 25px 50px -12px rgba(99, 102, 241, 0.20),
+                0 0 35px -5px rgba(236, 72, 153, 0.14),
+                inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
             width: 100%;
             max-width: 460px;
-            padding: 2.75rem 2.25rem;
+            padding: 3rem 2.25rem;
             text-align: center;
+            position: relative;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             animation: cardEntrance 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* Dark Mode High-Contrast Glassmorphism Card */
+        [data-theme="dark"] .login-card {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.92) 100%);
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+            border: 1.5px solid rgba(148, 163, 184, 0.25);
+            box-shadow: 
+                0 30px 60px -15px rgba(0, 0, 0, 0.75),
+                0 0 50px -5px rgba(99, 102, 241, 0.35),
+                inset 0 1px 1px 0 rgba(255, 255, 255, 0.25);
+        }
+
+        [data-theme="dark"] .login-heading {
+            color: #ffffff !important;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        [data-theme="dark"] .login-subheading {
+            color: #cbd5e1 !important;
+        }
+
+        [data-theme="dark"] .feature-grid {
+            border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+        }
+
+        [data-theme="dark"] .feature-pill {
+            color: #f1f5f9 !important;
+        }
+
+        [data-theme="dark"] .feature-pill i {
+            color: #38bdf8 !important;
+            filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6));
         }
 
         @keyframes cardEntrance {
@@ -57,68 +176,74 @@
         }
 
         .login-brand-logo {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--primary-blue, #2563eb), #6366f1);
+            width: 46px;
+            height: 46px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #2563eb, #7c3aed, #ec4899);
             display: flex;
             align-items: center;
             justify-content: center;
             color: #ffffff;
-            font-size: 1.25rem;
-            box-shadow: 0 8px 16px -4px var(--primary-glow, rgba(37, 99, 235, 0.4));
+            font-size: 1.35rem;
+            box-shadow: 0 8px 20px -4px rgba(99, 102, 241, 0.55);
         }
 
         .login-brand-name {
-            font-size: 1.75rem;
+            font-size: 1.85rem;
             font-weight: 800;
             letter-spacing: -0.03em;
-            background: linear-gradient(135deg, var(--text-primary, #0f172a), var(--primary-blue, #2563eb));
+            background: linear-gradient(135deg, #1e293b 20%, #2563eb 60%, #7c3aed 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        [data-theme="dark"] .login-brand-name {
+            background: linear-gradient(135deg, #ffffff 20%, #60a5fa 60%, #c084fc 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
         .login-heading {
-            font-size: 1.4rem;
+            font-size: 1.5rem;
             font-weight: 700;
-            color: var(--text-primary, #0f172a);
+            color: #0f172a;
             margin-bottom: 0.5rem;
             letter-spacing: -0.02em;
         }
 
         .login-subheading {
             font-size: 0.92rem;
-            color: var(--text-muted, #64748b);
+            color: #64748b;
             margin-bottom: 2rem;
             line-height: 1.5;
         }
 
-        /* Google Sign-In Button */
+        /* Google Sign-In Button with subtle hover glow */
         .google-auth-btn {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 0.85rem;
             width: 100%;
-            padding: 0.85rem 1.5rem;
+            padding: 0.9rem 1.5rem;
             background: #ffffff;
             color: #1f2937;
             border: 1.5px solid #e5e7eb;
-            border-radius: 12px;
+            border-radius: 14px;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             text-decoration: none;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.06);
             margin-bottom: 1.5rem;
         }
 
         .google-auth-btn:hover {
             border-color: #cbd5e1;
-            background: #f8fafc;
-            transform: translateY(-1px);
-            box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+            background: #fafafa;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px -5px rgba(99, 102, 241, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
 
         .google-auth-btn:active {
@@ -155,108 +280,91 @@
             color: #166534;
         }
 
-        .auth-alert-info {
-            background: #eff6ff;
-            border: 1px solid #bfdbfe;
-            color: #1e40af;
-        }
-
-        /* Feature Pills */
+        /* Centered Feature Pills */
         .feature-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 0.75rem;
-            margin-top: 1.75rem;
+            gap: 1.1rem 1.75rem;
+            margin-top: 2rem;
             padding-top: 1.75rem;
             border-top: 1px solid var(--border-subtle, #f1f5f9);
-            text-align: left;
+            max-width: 320px;
+            margin-left: auto;
+            margin-right: auto;
         }
 
         .feature-pill {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
-            font-size: 0.82rem;
+            gap: 0.65rem;
+            font-size: 0.86rem;
             color: var(--text-secondary, #475569);
             font-weight: 500;
+            white-space: nowrap;
         }
 
         .feature-pill i {
             color: var(--primary-blue, #2563eb);
-            font-size: 0.85rem;
+            font-size: 0.95rem;
+            width: 16px;
+            text-align: center;
         }
 
-        /* Dev Sandbox Login Box */
-        .dev-sandbox-section {
-            margin-top: 1.75rem;
-            padding-top: 1.25rem;
-            border-top: 1px dashed var(--border-color, #cbd5e1);
-            text-align: left;
-        }
-
-        .dev-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            padding: 0.2rem 0.6rem;
-            border-radius: 9999px;
-            background: #fef3c7;
-            border: 1px solid #fde68a;
-            color: #92400e;
-            font-size: 0.74rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.65rem;
-        }
-
-        .dev-accounts-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 0.6rem;
-            margin-top: 0.5rem;
-        }
-
-        .dev-account-btn {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.55rem 0.75rem;
-            background: var(--bg-subtle, #f8fafc);
-            border: 1px solid var(--border-subtle, #e2e8f0);
-            border-radius: 8px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: var(--text-secondary, #334155);
-            text-decoration: none;
-            transition: all 0.2s ease;
-        }
-
-        .dev-account-btn:hover {
-            background: var(--primary-blue-light, #eff6ff);
-            border-color: var(--primary-blue-border, #bfdbfe);
-            color: var(--primary-blue, #2563eb);
-        }
-
-        .dev-avatar-img {
-            width: 22px;
-            height: 22px;
-            border-radius: 50%;
-        }
-
+        /* Floating Glassmorphic Theme Toggle */
         .theme-float-btn {
             position: fixed;
             top: 1.5rem;
             right: 1.5rem;
-            z-index: 10;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1.5px solid rgba(255, 255, 255, 0.95);
+            box-shadow: 0 8px 24px -4px rgba(99, 102, 241, 0.25), 0 2px 6px rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #334155;
+            font-size: 1.15rem;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 100;
+        }
+
+        .theme-float-btn:hover {
+            transform: scale(1.1) rotate(15deg);
+            background: #ffffff;
+            color: var(--primary-blue, #2563eb);
+            box-shadow: 0 12px 28px -4px rgba(99, 102, 241, 0.35);
+            border-color: rgba(99, 102, 241, 0.4);
+        }
+
+        .theme-float-btn:active {
+            transform: scale(0.95);
+        }
+
+        [data-theme="dark"] .theme-float-btn {
+            background: rgba(30, 41, 59, 0.85);
+            border-color: rgba(255, 255, 255, 0.15);
+            color: #fbbf24;
+            box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4), 0 0 16px rgba(251, 191, 36, 0.2);
+        }
+
+        [data-theme="dark"] .theme-float-btn:hover {
+            background: rgba(51, 65, 85, 0.95);
+            color: #fde047;
+            box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.5), 0 0 20px rgba(251, 191, 36, 0.35);
         }
     </style>
 </head>
 <body>
-    <!-- Aurora mesh background -->
+    <!-- Aurora Multi-Gradient Floating Mesh Blobs -->
     <div class="aurora-mesh">
         <div class="aurora-blob blob-1"></div>
         <div class="aurora-blob blob-2"></div>
+        <div class="aurora-blob blob-3"></div>
     </div>
 
     <!-- Theme Toggle Floating Button -->
@@ -266,7 +374,7 @@
 
     <div class="login-page-container">
         <div class="login-card">
-            <!-- Brand -->
+            <!-- Brand Logo & Gradient Name -->
             <div class="login-brand">
                 <div class="login-brand-logo">
                     <i class="fa-solid fa-check"></i>
@@ -290,7 +398,7 @@
                 <i class="fa-solid fa-triangle-exclamation"></i>
                 <span>
                     {% if error == 'google_not_configured' %}
-                    Google OAuth is not configured yet in .env. Use the test accounts below or set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.
+                    Google OAuth is not configured yet in .env. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.
                     {% elif error == 'state_mismatch' %}
                     Authentication session expired. Please try signing in again.
                     {% elif error == 'auth_failed' %}
@@ -313,7 +421,7 @@
                 <span>Continue with Google</span>
             </a>
 
-            <!-- Feature Highlight Grid -->
+            <!-- Centered Feature Highlight Grid -->
             <div class="feature-grid">
                 <div class="feature-pill">
                     <i class="fa-solid fa-lock"></i>
@@ -330,26 +438,6 @@
                 <div class="feature-pill">
                     <i class="fa-solid fa-cloud"></i>
                     <span>Cloud Sync</span>
-                </div>
-            </div>
-
-            <!-- Testing Sandbox Multi-Account Switcher -->
-            <div class="dev-sandbox-section">
-                <div class="dev-badge">
-                    <i class="fa-solid fa-vial"></i> Quick Test Sandbox
-                </div>
-                <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.4rem;">
-                    Sign in with separate test profiles to verify account isolation:
-                </p>
-                <div class="dev-accounts-grid">
-                    <a href="/auth/dev-login?account=user_a" class="dev-account-btn" id="loginAccountABtn" title="Sign in as Account A">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" class="dev-avatar-img" alt="Alex">
-                        <span>Account A (Alex)</span>
-                    </a>
-                    <a href="/auth/dev-login?account=user_b" class="dev-account-btn" id="loginAccountBBtn" title="Sign in as Account B">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Beatriz" class="dev-avatar-img" alt="Beatriz">
-                        <span>Account B (Beatriz)</span>
-                    </a>
                 </div>
             </div>
         </div>
