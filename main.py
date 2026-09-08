@@ -75,6 +75,12 @@ def normalize_task_doc(doc: dict, target_date: str = None) -> dict:
         else:
             task_date = target_date or get_today_date_str()
 
+    created_at = doc.get("created_at")
+    created_at_val = created_at.isoformat() if isinstance(created_at, datetime) else (str(created_at) if created_at else None)
+
+    updated_at = doc.get("updated_at")
+    updated_at_val = updated_at.isoformat() if isinstance(updated_at, datetime) else (str(updated_at) if updated_at else None)
+
     return {
         "id": task_id,
         "task_title": task_title,
@@ -85,8 +91,8 @@ def normalize_task_doc(doc: dict, target_date: str = None) -> dict:
         "notes": notes,
         "order": order,
         "date": task_date,
-        "created_at": doc.get("created_at"),
-        "updated_at": doc.get("updated_at")
+        "created_at": created_at_val,
+        "updated_at": updated_at_val
     }
 
 
@@ -189,18 +195,37 @@ def calculate_user_streak():
         else:
             break
 
-    # Build 7-day mini heatmap (last 7 days ending today)
-    heatmap = []
-    for i in range(6, -1, -1):
-        day = today_date - timedelta(days=i)
-        day_str = day.strftime("%Y-%m-%d")
-        day_name = day.strftime("%a") # e.g. Mon, Tue
-        day_number = day.strftime("%d")
+    # Build 7-day mini heatmap (last 7 days ending today) in a single fast batched query
+    seven_day_dates = [(today_date - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(6, -1, -1)]
+    start_dt = datetime.strptime(seven_day_dates[0], "%Y-%m-%d")
+    end_dt = datetime.strptime(seven_day_dates[-1], "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
 
-        # Check total and completed for this day
-        day_tasks = fetch_tasks_for_date(day_str)
-        t_count = day_tasks["total_count"]
-        c_count = day_tasks["completed_count"]
+    recent_docs = list(tasks_collection.find({
+        "$or": [
+            {"date": {"$in": seven_day_dates}},
+            {"date": None, "created_at": {"$gte": start_dt, "$lte": end_dt}},
+            {"date": {"$exists": False}, "created_at": {"$gte": start_dt, "$lte": end_dt}}
+        ]
+    }))
+
+    # Aggregate counts by date in memory
+    day_stats = {d: {"total": 0, "completed": 0} for d in seven_day_dates}
+    for doc in recent_docs:
+        norm = normalize_task_doc(doc)
+        d = norm["date"]
+        if d in day_stats:
+            day_stats[d]["total"] += 1
+            if norm["status"] == "Completed":
+                day_stats[d]["completed"] += 1
+
+    heatmap = []
+    for day_str in seven_day_dates:
+        day_obj = datetime.strptime(day_str, "%Y-%m-%d")
+        day_name = day_obj.strftime("%a") # e.g. Mon, Tue
+        day_number = day_obj.strftime("%d")
+
+        t_count = day_stats[day_str]["total"]
+        c_count = day_stats[day_str]["completed"]
 
         heatmap.append({
             "date": day_str,
