@@ -1357,11 +1357,11 @@
             width: 20px;
             height: 20px;
             border: 2px solid var(--border-bold);
-            border-radius: 50%;
+            border-radius: 5px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 10px;
+            font-size: 11px;
             color: transparent;
             transition: var(--transition);
         }
@@ -1709,6 +1709,61 @@
             .pomodoro-left { justify-content: space-between; }
             .pomodoro-controls { justify-content: space-between; }
         }
+
+        /* ---------------- Database Error Banner ---------------- */
+        .db-error-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: #fef2f2;
+            border: 1.5px solid #f87171;
+            color: #991b1b;
+            padding: 12px 18px;
+            border-radius: var(--radius-md);
+            font-size: 0.875rem;
+            font-weight: 500;
+            box-shadow: var(--shadow-sm);
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        [data-theme="dark"] .db-error-banner {
+            background: #450a0a;
+            border-color: #991b1b;
+            color: #fecaca;
+        }
+
+        .db-error-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .db-error-content i {
+            font-size: 1.1rem;
+            color: #dc2626;
+            flex-shrink: 0;
+        }
+
+        .db-error-close {
+            background: transparent;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 4px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.8;
+            transition: var(--transition);
+        }
+
+        .db-error-close:hover {
+            opacity: 1;
+            background: rgba(0, 0, 0, 0.05);
+        }
     </style>
 </head>
 <body>
@@ -1725,6 +1780,18 @@
     </div>
 
     <div class="dashboard-wrapper">
+        {% if error %}
+        <div class="db-error-banner" id="dbErrorBanner">
+            <div class="db-error-content">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>{{ error }}</span>
+            </div>
+            <button type="button" class="db-error-close" onclick="document.getElementById('dbErrorBanner').style.display='none'" title="Dismiss">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        {% endif %}
+
         <!-- Compact Clean Header -->
         <header class="dashboard-header">
             <div class="header-left">
@@ -2097,28 +2164,32 @@
         </div>
     </div>
 
+    <!-- Initial Server-Rendered JSON Payload -->
+    <script id="server-initial-data" type="application/json">
+    {
+        "selectedDate": {{ selected_date | tojson }},
+        "tasks": {{ tasks | tojson }},
+        "heatmap": {{ heatmap | tojson }},
+        "streak": {{ streak | tojson }}
+    }
+    </script>
+
     <!-- Application Script -->
     <script>
-        // Initial Server-Rendered Data
-        const initialDate = "{{ selected_date }}";
-        const initialTasks = [
-            {% for task in tasks %}
-            {
-                id: "{{ task.id }}",
-                task_title: {{ task.task_title | tojson }},
-                status: "{{ task.status }}",
-                completed: {{ "true" if task.completed else "false" }},
-                priority: "{{ task.priority }}",
-                category: "{{ task.category }}",
-                notes: {{ task.notes | tojson }},
-                order: {{ task.order }},
-                date: "{{ task.date }}"
-            }{% if not loop.last %},{% endif %}
-            {% endfor %}
-        ];
+        function generateClientId() {
+            return 'temp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+        }
 
-        let initialHeatmap = {{ heatmap | tojson }};
-        let userStreak = {{ streak }};
+        // Parse Server-Rendered Data safely
+        const serverDataEl = document.getElementById('server-initial-data');
+        const serverData = serverDataEl ? JSON.parse(serverDataEl.textContent || '{}') : {};
+        const initialDate = serverData.selectedDate || getTodayIsoString();
+        const initialTasks = (serverData.tasks || []).map(task => ({
+            ...task,
+            id: task.id || generateClientId()
+        }));
+        let initialHeatmap = serverData.heatmap || [];
+        let userStreak = serverData.streak || 0;
 
         // State variables
         let currentDate = initialDate || getTodayIsoString();
@@ -2171,6 +2242,7 @@
         const pomoTaskSelect = document.getElementById('pomoTaskSelect');
         const pomoModeLabel = document.getElementById('pomoModeLabel');
 
+        const datePickerWrapper = document.querySelector('.date-picker-wrapper');
         const datePickerInput = document.getElementById('datePickerInput');
         const dateDisplayLabel = document.getElementById('dateDisplayLabel');
         const prevDayBtn = document.getElementById('prevDayBtn');
@@ -2324,7 +2396,7 @@
             colorPaletteMenu.style.display = 'none';
         });
 
-        // ---------------- Pomodoro Focus Timer with Custom Hours/Mins ----------------
+        // ---------------- Pomodoro Focus Timer ----------------
         pomodoroToggleBtn.addEventListener('click', () => {
             const isVisible = pomodoroDrawer.style.display !== 'none';
             pomodoroDrawer.style.display = isVisible ? 'none' : 'flex';
@@ -2338,7 +2410,7 @@
             currentTasks.forEach(task => {
                 if (!task.completed && task.status !== 'Completed') {
                     const opt = document.createElement('option');
-                    opt.value = task.id || task.task_title;
+                    opt.value = task.id;
                     opt.textContent = task.task_title;
                     pomoTaskSelect.appendChild(opt);
                 }
@@ -2361,14 +2433,12 @@
         function updateTimerDisplay() {
             timerDisplay.textContent = formatTimerString(pomoRemainingSeconds);
 
-            // Adjust font size slightly if format is HH:MM:SS
             if (pomoRemainingSeconds >= 3600) {
                 timerDisplay.style.fontSize = '0.78rem';
             } else {
                 timerDisplay.style.fontSize = '0.95rem';
             }
 
-            // Update SVG circle stroke (radius 32 -> circumference = 2 * PI * 32 = 201.06)
             const circumference = 201.06;
             const progress = pomoTotalSeconds > 0 ? (pomoTotalSeconds - pomoRemainingSeconds) / pomoTotalSeconds : 0;
             const offset = circumference * (1 - progress);
@@ -2391,10 +2461,9 @@
                     pomoIsRunning = false;
                     pomoPlayIcon.className = 'fa-solid fa-play';
                     
-                    // Trigger Alarm sound & Visual Pulse
                     playAlarmSound();
                     timerProgressCircle.classList.add('ring-alarm-pulse');
-                    showToast('⏰ Focus session complete! Time for a well-deserved break.');
+                    showToast('⏰ Focus session complete! Take a break.');
                 }
             }, 1000);
         }
@@ -2433,7 +2502,6 @@
                 if (pomoCurrentMode === 'custom') {
                     pomoCustomBar.style.display = 'flex';
                     pomoModeLabel.textContent = 'Custom Session';
-                    // Apply whatever is in custom inputs
                     applyCustomPomoTime();
                 } else {
                     pomoCustomBar.style.display = 'none';
@@ -2663,7 +2731,7 @@
                                 <button type="button" class="icon-btn edit-action" title="Edit Task" onclick="openEditModal('${taskId}')">
                                     <i class="fa-regular fa-pen-to-square"></i>
                                 </button>
-                                <button type="button" class="icon-btn delete-action" title="Delete Task" onclick="openDeleteModal('${taskId}', '${escapeHtml(taskTitle).replace(/'/g, "\\'")}')">
+                                <button type="button" class="icon-btn delete-action" title="Delete Task" onclick="openDeleteModal('${taskId}')">
                                     <i class="fa-regular fa-trash-can"></i>
                                 </button>
                             </div>
@@ -2746,7 +2814,7 @@
 
         // ---------------- Task Actions (Toggle, Add, Edit, Delete) ----------------
         function toggleTaskCompletion(taskId) {
-            const task = currentTasks.find((t, i) => (t.id === taskId || `temp-${i}` === taskId));
+            const task = currentTasks.find(t => t.id === taskId);
             if (task) {
                 task.completed = !task.completed;
                 task.status = task.completed ? 'Completed' : 'Pending';
@@ -2763,7 +2831,7 @@
             const priority = prioritySelect.value;
             const category = categorySelect.value;
             const newTask = {
-                id: null,
+                id: generateClientId(),
                 task_title: text,
                 status: 'Pending',
                 completed: false,
@@ -2778,10 +2846,11 @@
             taskInput.value = '';
             setUnsavedChanges(true);
             renderTasks();
+            showToast('Task added! Remember to save changes.');
         });
 
         function openEditModal(taskId) {
-            const task = currentTasks.find((t, i) => (t.id === taskId || `temp-${i}` === taskId));
+            const task = currentTasks.find(t => t.id === taskId);
             if (!task) return;
 
             editingTaskId = taskId;
@@ -2803,7 +2872,7 @@
             const newTitle = editTaskTitle.value.trim();
             if (!newTitle || !editingTaskId) return;
 
-            const task = currentTasks.find((t, i) => (t.id === editingTaskId || `temp-${i}` === editingTaskId));
+            const task = currentTasks.find(t => t.id === editingTaskId);
             if (task) {
                 task.task_title = newTitle;
                 task.priority = editPrioritySelect.value;
@@ -2815,9 +2884,10 @@
             closeEditModal();
         });
 
-        function openDeleteModal(taskId, taskTitle) {
+        function openDeleteModal(taskId) {
             deletingTaskId = taskId;
-            modalTaskName.textContent = `"${taskTitle}"`;
+            const task = currentTasks.find(t => t.id === taskId);
+            modalTaskName.textContent = task ? `"${task.task_title}"` : 'this task';
             deleteModal.style.display = 'flex';
         }
 
@@ -2828,7 +2898,7 @@
 
         confirmDeleteBtn.addEventListener('click', () => {
             if (!deletingTaskId) return;
-            currentTasks = currentTasks.filter((t, i) => !(t.id === deletingTaskId || `temp-${i}` === deletingTaskId));
+            currentTasks = currentTasks.filter(t => t.id !== deletingTaskId);
             setUnsavedChanges(true);
             renderTasks();
             closeDeleteModal();
@@ -2869,7 +2939,7 @@
                 const payload = {
                     date: currentDate,
                     tasks: currentTasks.map((t, idx) => ({
-                        id: t.id || null,
+                        id: (t.id && !t.id.startsWith('temp-')) ? t.id : null,
                         task_title: t.task_title,
                         status: (t.completed || t.status === 'Completed') ? 'Completed' : 'Pending',
                         completed: Boolean(t.completed || t.status === 'Completed'),
@@ -3002,12 +3072,28 @@
             if (e.target.value) requestDateChange(e.target.value);
         });
 
-        // ---------------- Modal Dismiss & Unload Guards ----------------
+        if (datePickerWrapper) {
+            datePickerWrapper.addEventListener('click', () => {
+                try {
+                    if (typeof datePickerInput.showPicker === 'function') {
+                        datePickerInput.showPicker();
+                    }
+                } catch (err) {
+                    datePickerInput.focus();
+                }
+            });
+        }
+
+        // ---------------- Keyboard Shortcuts & Modal Dismiss ----------------
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 closeEditModal();
                 closeDeleteModal();
                 unsavedPromptModal.style.display = 'none';
+            }
+            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                saveCurrentDayTasks(true);
             }
         });
 
