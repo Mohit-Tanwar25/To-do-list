@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-accent="blue">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In • TaskMaster Productivity</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+
+    <style>
+        .login-page-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1.25rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        .login-card {
+            background: var(--bg-card, rgba(255, 255, 255, 0.94));
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color, #e2e8f0);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.1), 0 0 25px -5px var(--primary-glow, rgba(37, 99, 235, 0.15));
+            width: 100%;
+            max-width: 460px;
+            padding: 2.75rem 2.25rem;
+            text-align: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: cardEntrance 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes cardEntrance {
+            from {
+                opacity: 0;
+                transform: translateY(24px) scale(0.98);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .login-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .login-brand-logo {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary-blue, #2563eb), #6366f1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-size: 1.25rem;
+            box-shadow: 0 8px 16px -4px var(--primary-glow, rgba(37, 99, 235, 0.4));
+        }
+
+        .login-brand-name {
+            font-size: 1.75rem;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, var(--text-primary, #0f172a), var(--primary-blue, #2563eb));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .login-heading {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text-primary, #0f172a);
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+        }
+
+        .login-subheading {
+            font-size: 0.92rem;
+            color: var(--text-muted, #64748b);
+            margin-bottom: 2rem;
+            line-height: 1.5;
+        }
+
+        /* Google Sign-In Button */
+        .google-auth-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.85rem;
+            width: 100%;
+            padding: 0.85rem 1.5rem;
+            background: #ffffff;
+            color: #1f2937;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+            margin-bottom: 1.5rem;
+        }
+
+        .google-auth-btn:hover {
+            border-color: #cbd5e1;
+            background: #f8fafc;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+        }
+
+        .google-auth-btn:active {
+            transform: translateY(0);
+        }
+
+        .google-icon-svg {
+            width: 22px;
+            height: 22px;
+            flex-shrink: 0;
+        }
+
+        /* Alert / Message Boxes */
+        .auth-alert {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            padding: 0.75rem 1rem;
+            border-radius: 10px;
+            font-size: 0.88rem;
+            margin-bottom: 1.25rem;
+            text-align: left;
+        }
+
+        .auth-alert-error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #991b1b;
+        }
+
+        .auth-alert-success {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            color: #166534;
+        }
+
+        .auth-alert-info {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1e40af;
+        }
+
+        /* Feature Pills */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+            margin-top: 1.75rem;
+            padding-top: 1.75rem;
+            border-top: 1px solid var(--border-subtle, #f1f5f9);
+            text-align: left;
+        }
+
+        .feature-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.82rem;
+            color: var(--text-secondary, #475569);
+            font-weight: 500;
+        }
+
+        .feature-pill i {
+            color: var(--primary-blue, #2563eb);
+            font-size: 0.85rem;
+        }
+
+        /* Dev Sandbox Login Box */
+        .dev-sandbox-section {
+            margin-top: 1.75rem;
+            padding-top: 1.25rem;
+            border-top: 1px dashed var(--border-color, #cbd5e1);
+            text-align: left;
+        }
+
+        .dev-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 9999px;
+            background: #fef3c7;
+            border: 1px solid #fde68a;
+            color: #92400e;
+            font-size: 0.74rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.65rem;
+        }
+
+        .dev-accounts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.6rem;
+            margin-top: 0.5rem;
+        }
+
+        .dev-account-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.55rem 0.75rem;
+            background: var(--bg-subtle, #f8fafc);
+            border: 1px solid var(--border-subtle, #e2e8f0);
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary, #334155);
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .dev-account-btn:hover {
+            background: var(--primary-blue-light, #eff6ff);
+            border-color: var(--primary-blue-border, #bfdbfe);
+            color: var(--primary-blue, #2563eb);
+        }
+
+        .dev-avatar-img {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+        }
+
+        .theme-float-btn {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <!-- Aurora mesh background -->
+    <div class="aurora-mesh">
+        <div class="aurora-blob blob-1"></div>
+        <div class="aurora-blob blob-2"></div>
+    </div>
+
+    <!-- Theme Toggle Floating Button -->
+    <button type="button" class="header-btn theme-float-btn" id="themeToggleBtn" title="Toggle Light/Dark Theme">
+        <i class="fa-solid fa-moon" id="themeIcon"></i>
+    </button>
+
+    <div class="login-page-container">
+        <div class="login-card">
+            <!-- Brand -->
+            <div class="login-brand">
+                <div class="login-brand-logo">
+                    <i class="fa-solid fa-check"></i>
+                </div>
+                <div class="login-brand-name">TaskMaster</div>
+            </div>
+
+            <h1 class="login-heading">Welcome back</h1>
+            <p class="login-subheading">Sign in to access your private daily planner, focus timer, and streak tracking.</p>
+
+            <!-- Alerts -->
+            {% if message == 'logged_out' %}
+            <div class="auth-alert auth-alert-success">
+                <i class="fa-solid fa-circle-check"></i>
+                <span>You have been signed out successfully.</span>
+            </div>
+            {% endif %}
+
+            {% if error %}
+            <div class="auth-alert auth-alert-error">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>
+                    {% if error == 'google_not_configured' %}
+                    Google OAuth is not configured yet in .env. Use the test accounts below or set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.
+                    {% elif error == 'state_mismatch' %}
+                    Authentication session expired. Please try signing in again.
+                    {% elif error == 'auth_failed' %}
+                    Google sign-in failed. Please try again.
+                    {% else %}
+                    {{ error }}
+                    {% endif %}
+                </span>
+            </div>
+            {% endif %}
+
+            <!-- Primary Google Sign-In Action -->
+            <a href="/auth/google" class="google-auth-btn" id="googleLoginBtn">
+                <svg class="google-icon-svg" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                </svg>
+                <span>Continue with Google</span>
+            </a>
+
+            <!-- Feature Highlight Grid -->
+            <div class="feature-grid">
+                <div class="feature-pill">
+                    <i class="fa-solid fa-lock"></i>
+                    <span>100% Private Tasks</span>
+                </div>
+                <div class="feature-pill">
+                    <i class="fa-solid fa-fire"></i>
+                    <span>Streak Tracking</span>
+                </div>
+                <div class="feature-pill">
+                    <i class="fa-solid fa-clock"></i>
+                    <span>Focus Pomodoro</span>
+                </div>
+                <div class="feature-pill">
+                    <i class="fa-solid fa-cloud"></i>
+                    <span>Cloud Sync</span>
+                </div>
+            </div>
+
+            <!-- Testing Sandbox Multi-Account Switcher -->
+            <div class="dev-sandbox-section">
+                <div class="dev-badge">
+                    <i class="fa-solid fa-vial"></i> Quick Test Sandbox
+                </div>
+                <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.4rem;">
+                    Sign in with separate test profiles to verify account isolation:
+                </p>
+                <div class="dev-accounts-grid">
+                    <a href="/auth/dev-login?account=user_a" class="dev-account-btn" id="loginAccountABtn" title="Sign in as Account A">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" class="dev-avatar-img" alt="Alex">
+                        <span>Account A (Alex)</span>
+                    </a>
+                    <a href="/auth/dev-login?account=user_b" class="dev-account-btn" id="loginAccountBBtn" title="Sign in as Account B">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Beatriz" class="dev-avatar-img" alt="Beatriz">
+                        <span>Account B (Beatriz)</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Theme Toggle
+        (function() {
+            const savedTheme = localStorage.getItem('taskmaster_theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            const themeToggleBtn = document.getElementById('themeToggleBtn');
+            const themeIcon = document.getElementById('themeIcon');
+            
+            function updateThemeIcon(t) {
+                if (themeIcon) {
+                    themeIcon.className = t === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+                }
+            }
+            updateThemeIcon(savedTheme);
+
+            if (themeToggleBtn) {
+                themeToggleBtn.addEventListener('click', () => {
+                    const current = document.documentElement.getAttribute('data-theme') || 'light';
+                    const next = current === 'dark' ? 'light' : 'dark';
+                    document.documentElement.setAttribute('data-theme', next);
+                    localStorage.setItem('taskmaster_theme', next);
+                    updateThemeIcon(next);
+                });
+            }
+        })();
+    </script>
+</body>
+</html>
