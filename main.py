@@ -1,22 +1,29 @@
-from fastapi import FastAPI, Request, Form, Query, HTTPException, Body
+from fastapi import FastAPI, Request, Form, Query, HTTPException, Depends, status
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from bson import ObjectId
-from db_connection import get_tasks_collection
+from db_connection import get_tasks_collection, init_db_indexes
 from datetime import datetime, timezone, timedelta
+from contextlib import asynccontextmanager
 import os
 import re
 
-app = FastAPI(title="TaskMaster Todo App")
+import auth
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db_indexes()
+    yield
+
+app = FastAPI(title="TaskMaster Todo App", lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
 VALID_CATEGORIES = ["General", "Work", "Personal", "Study", "Health", "Finance"]
 VALID_PRIORITIES = ["High", "Medium", "Low"]
 
@@ -41,15 +48,15 @@ def normalize_task_doc(doc: dict, target_date: str = None) -> dict:
     """Standardizes MongoDB task document into a consistent structure."""
     task_id = str(doc.get("_id", ""))
     task_title = doc.get("task_title") or doc.get("task") or ""
-    status = doc.get("status", "Pending")
+    status_val = doc.get("status", "Pending")
     
     # Handle boolean or string completion status
     if "completed" in doc and isinstance(doc["completed"], bool):
         completed = doc["completed"]
-        status = "Completed" if completed else "Pending"
+        status_val = "Completed" if completed else "Pending"
     else:
-        completed = (status == "Completed")
-        status = "Completed" if completed else "Pending"
+        completed = (status_val == "Completed")
+        status_val = "Completed" if completed else "Pending"
 
     priority = doc.get("priority", "Medium")
     if priority not in VALID_PRIORITIES:
@@ -84,7 +91,7 @@ def normalize_task_doc(doc: dict, target_date: str = None) -> dict:
     return {
         "id": task_id,
         "task_title": task_title,
-        "status": status,
+        "status": status_val,
         "completed": completed,
         "priority": priority,
         "category": category,
@@ -96,8 +103,8 @@ def normalize_task_doc(doc: dict, target_date: str = None) -> dict:
     }
 
 
-def fetch_tasks_for_date(date_str: str):
-    """Fetches and computes statistics for tasks on a given date."""
+def fetch_tasks_for_date(date_str: str, user_id: str):
+    """Fetches and computes statistics for tasks on a given date for a specific authenticated user."""
     tasks_collection = get_tasks_collection()
     
     try:
@@ -107,20 +114,22 @@ def fetch_tasks_for_date(date_str: str):
         dt_start = None
         dt_end = None
 
-    query = {
-        "$or": [
-            {"date": date_str}
-        ]
-    }
+    date_conditions = [{"date": date_str}]
     if dt_start and dt_end:
-        query["$or"].append({
+        date_conditions.append({
             "date": {"$exists": False},
             "created_at": {"$gte": dt_start, "$lte": dt_end}
         })
-        query["$or"].append({
+        date_conditions.append({
             "date": None,
             "created_at": {"$gte": dt_start, "$lte": dt_end}
         })
+
+    # Strict isolation: filter by user_id
+    query = {
+        "user_id": user_id,
+        "$or": date_conditions
+    }
 
     # Sort by order ascending, then _id descending
     raw_tasks = list(tasks_collection.find(query).sort([("order", 1), ("_id", -1)]))
@@ -150,15 +159,18 @@ def fetch_tasks_for_date(date_str: str):
     }
 
 
-def calculate_user_streak():
-    """Computes current streak of consecutive days with completed tasks and 7-day activity."""
+def calculate_user_streak(user_id: str):
+    """Computes current streak of consecutive days with completed tasks and 7-day activity strictly for the user."""
     tasks_collection = get_tasks_collection()
     now_utc = datetime.now(timezone.utc)
     today_date = now_utc.date()
 
-    # Find distinct dates with at least one completed task
+    # Find distinct dates with at least one completed task for this user
     completed_tasks = list(tasks_collection.find(
-        {"$or": [{"status": "Completed"}, {"completed": True}]},
+        {
+            "user_id": user_id,
+            "$or": [{"status": "Completed"}, {"completed": True}]
+        },
         {"date": 1, "created_at": 1}
     ))
 
@@ -175,8 +187,6 @@ def calculate_user_streak():
     check_date = today_date
     today_str = today_date.strftime("%Y-%m-%d")
 
-    # If today has completed tasks, streak starts from today
-    # Otherwise check if yesterday had completed tasks to keep the streak alive
     if today_str in completed_dates:
         streak += 1
         check_date = check_date - timedelta(days=1)
@@ -195,12 +205,13 @@ def calculate_user_streak():
         else:
             break
 
-    # Build 7-day mini heatmap (last 7 days ending today) in a single fast batched query
+    # Build 7-day mini heatmap for this user
     seven_day_dates = [(today_date - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(6, -1, -1)]
     start_dt = datetime.strptime(seven_day_dates[0], "%Y-%m-%d")
     end_dt = datetime.strptime(seven_day_dates[-1], "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
 
     recent_docs = list(tasks_collection.find({
+        "user_id": user_id,
         "$or": [
             {"date": {"$in": seven_day_dates}},
             {"date": None, "created_at": {"$gte": start_dt, "$lte": end_dt}},
@@ -221,7 +232,7 @@ def calculate_user_streak():
     heatmap = []
     for day_str in seven_day_dates:
         day_obj = datetime.strptime(day_str, "%Y-%m-%d")
-        day_name = day_obj.strftime("%a") # e.g. Mon, Tue
+        day_name = day_obj.strftime("%a")
         day_number = day_obj.strftime("%d")
 
         t_count = day_stats[day_str]["total"]
@@ -281,7 +292,7 @@ class UpdateTaskRequest(BaseModel):
     order: Optional[int] = None
 
 
-# ---------------- Web Routes (HTML) ----------------
+# ---------------- Web Routes (HTML) & Authentication ----------------
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
@@ -291,8 +302,157 @@ def favicon():
     return HTMLResponse(status_code=404)
 
 
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, error: Optional[str] = None, message: Optional[str] = None):
+    """Renders the login page with Google OAuth option."""
+    current_user = auth.get_current_user_optional(request)
+    if current_user and current_user.get("id"):
+        return RedirectResponse(url="/", status_code=303)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={
+            "google_configured": auth.is_google_auth_configured(),
+            "error": error,
+            "message": message
+        }
+    )
+
+
+@app.get("/auth/google")
+def auth_google(request: Request):
+    """Initiates Google OAuth flow."""
+    if not auth.is_google_auth_configured():
+        return RedirectResponse(url="/login?error=google_not_configured", status_code=303)
+
+    state = auth.generate_state_token()
+    redirect_uri = auth.get_redirect_uri(request)
+    auth_url = auth.get_google_authorization_url(state, redirect_uri)
+
+    response = RedirectResponse(url=auth_url, status_code=303)
+    response.set_cookie(
+        key="oauth_state",
+        value=state,
+        httponly=True,
+        max_age=600,
+        samesite="lax",
+        secure=request.url.scheme == "https"
+    )
+    return response
+
+
+@app.get("/auth/google/callback")
+async def auth_google_callback(
+    request: Request,
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None
+):
+    """Handles Google OAuth callback, validates code/state, and sets session cookie."""
+    if error:
+        return RedirectResponse(url=f"/login?error={error}", status_code=303)
+
+    if not code:
+        return RedirectResponse(url="/login?error=missing_code", status_code=303)
+
+    cookie_state = request.cookies.get("oauth_state")
+    if not cookie_state or cookie_state != state:
+        # State mismatch or expired
+        return RedirectResponse(url="/login?error=state_mismatch", status_code=303)
+
+    try:
+        redirect_uri = auth.get_redirect_uri(request)
+        user_info = await auth.exchange_google_code_for_user(code, redirect_uri)
+        user_record = auth.upsert_user_record(user_info)
+        session_token = auth.create_session_token(user_record)
+
+        response = RedirectResponse(url="/", status_code=303)
+        response.delete_cookie(key="oauth_state")
+        response.set_cookie(
+            key=auth.SESSION_COOKIE_NAME,
+            value=session_token,
+            httponly=True,
+            max_age=auth.SESSION_EXPIRE_DAYS * 86400,
+            samesite="lax",
+            secure=request.url.scheme == "https"
+        )
+        return response
+    except Exception as e:
+        print(f"OAuth callback error: {e}")
+        return RedirectResponse(url=f"/login?error=auth_failed", status_code=303)
+
+
+@app.get("/auth/dev-login")
+@app.post("/auth/dev-login")
+def dev_login(
+    request: Request,
+    account: str = Query("user_a", description="Account identifier e.g. user_a, user_b, or custom email"),
+    name: Optional[str] = Query(None)
+):
+    """
+    Development/Testing helper login to easily switch between test accounts
+    (e.g., Account A vs Account B) without requiring active Google credentials during local testing.
+    """
+    account_key = account.strip().lower()
+    if account_key == "user_a" or account_key == "a":
+        dev_profile = {
+            "sub": "google-oauth2|100000000000000000001",
+            "email": "user.a.test@gmail.com",
+            "name": name or "Alex Rivera (Account A)",
+            "picture": "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex"
+        }
+    elif account_key == "user_b" or account_key == "b":
+        dev_profile = {
+            "sub": "google-oauth2|200000000000000000002",
+            "email": "user.b.test@gmail.com",
+            "name": name or "Beatriz Chen (Account B)",
+            "picture": "https://api.dicebear.com/7.x/avataaars/svg?seed=Beatriz"
+        }
+    else:
+        # Custom testing email
+        clean_email = account if "@" in account else f"{account}@gmail.com"
+        clean_name = name or clean_email.split("@")[0].capitalize()
+        dev_profile = {
+            "sub": f"google-oauth2|dev_{abs(hash(clean_email))}",
+            "email": clean_email,
+            "name": clean_name,
+            "picture": f"https://api.dicebear.com/7.x/avataaars/svg?seed={clean_name}"
+        }
+
+    user_record = auth.upsert_user_record(dev_profile)
+    session_token = auth.create_session_token(user_record)
+
+    redirect_target = request.query_params.get("next", "/")
+    response = RedirectResponse(url=redirect_target, status_code=303)
+    response.set_cookie(
+        key=auth.SESSION_COOKIE_NAME,
+        value=session_token,
+        httponly=True,
+        max_age=auth.SESSION_EXPIRE_DAYS * 86400,
+        samesite="lax",
+        secure=request.url.scheme == "https"
+    )
+    return response
+
+
+@app.get("/auth/logout")
+@app.post("/auth/logout")
+def logout():
+    """Logs out the current user and clears session cookie."""
+    response = RedirectResponse(url="/login?message=logged_out", status_code=303)
+    response.delete_cookie(key=auth.SESSION_COOKIE_NAME)
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, date: Optional[str] = None):
+    """Main task dashboard. Strictly requires authentication; redirects to /login if unauthenticated."""
+    current_user = auth.get_current_user_optional(request)
+    if not current_user or not current_user.get("id"):
+        return RedirectResponse(url="/login", status_code=303)
+
+    user_id = current_user["id"]
     error_message = None
     selected_date = date if (date and is_valid_date(date)) else get_today_date_str()
     tasks_data = {
@@ -306,19 +466,20 @@ def home(request: Request, date: Optional[str] = None):
     streak_data = {"streak": 0, "heatmap": []}
 
     try:
-        tasks_data = fetch_tasks_for_date(selected_date)
-        streak_data = calculate_user_streak()
+        tasks_data = fetch_tasks_for_date(selected_date, user_id=user_id)
+        streak_data = calculate_user_streak(user_id=user_id)
     except Exception as e:
         error_message = (
             "Could not connect to MongoDB. Please ensure your MongoDB credentials "
             "and network access (0.0.0.0/0 IP whitelist) are configured."
         )
-        print(f"Database connection error: {e}")
+        print(f"Database error in dashboard: {e}")
 
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
+            "user": current_user,
             "tasks": tasks_data["tasks"],
             "selected_date": selected_date,
             "error": error_message,
@@ -332,14 +493,17 @@ def home(request: Request, date: Optional[str] = None):
     )
 
 
-# ---------------- REST API Endpoints ----------------
+# ---------------- REST API Endpoints (Protected by User Session) ----------------
 
 @app.get("/api/tasks")
-def get_tasks_api(date: Optional[str] = Query(None)):
-    """Fetch all tasks and statistics for a specific date (YYYY-MM-DD)."""
+def get_tasks_api(
+    date: Optional[str] = Query(None),
+    current_user: dict = Depends(auth.get_current_user_required)
+):
+    """Fetch all tasks and statistics for a specific date for the authenticated user."""
     selected_date = date if (date and is_valid_date(date)) else get_today_date_str()
     try:
-        data = fetch_tasks_for_date(selected_date)
+        data = fetch_tasks_for_date(selected_date, user_id=current_user["id"])
         return data
     except Exception as e:
         print(f"API Error fetching tasks: {e}")
@@ -347,24 +511,29 @@ def get_tasks_api(date: Optional[str] = Query(None)):
 
 
 @app.get("/api/stats/streak")
-def get_streak_api():
-    """Fetch user daily streak and 7-day activity heatmap."""
+def get_streak_api(current_user: dict = Depends(auth.get_current_user_required)):
+    """Fetch daily streak and 7-day activity heatmap for the authenticated user."""
     try:
-        return calculate_user_streak()
+        return calculate_user_streak(user_id=current_user["id"])
     except Exception as e:
         print(f"API Error fetching streak: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch streak: {str(e)}")
 
 
 @app.post("/api/tasks/save")
-def save_day_tasks_api(payload: SaveDayTasksRequest):
+def save_day_tasks_api(
+    payload: SaveDayTasksRequest,
+    current_user: dict = Depends(auth.get_current_user_required)
+):
     """
-    Saves all tasks for a specific date in one request, preserving ordering, categories, and notes.
-    Existing tasks for other dates are NEVER touched.
+    Saves all tasks for a specific date in one request for the authenticated user.
+    Tasks belonging to other users or other dates are NEVER touched.
     """
     date_str = payload.date.strip()
     if not is_valid_date(date_str):
         raise HTTPException(status_code=400, detail="Invalid date format. Expected YYYY-MM-DD.")
+
+    user_id = current_user["id"]
 
     try:
         tasks_collection = get_tasks_collection()
@@ -376,24 +545,25 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
             if not title:
                 continue
 
-            status = "Completed" if (item.completed or item.status == "Completed") else "Pending"
+            status_val = "Completed" if (item.completed or item.status == "Completed") else "Pending"
             priority = item.priority if item.priority in VALID_PRIORITIES else "Medium"
             category = item.category if item.category in VALID_CATEGORIES else "General"
             notes = item.notes.strip() if item.notes else ""
             order = item.order if item.order is not None else index
-            completed = (status == "Completed")
+            completed = (status_val == "Completed")
 
             doc_id = None
             if item.id and ObjectId.is_valid(item.id):
                 doc_id = ObjectId(item.id)
 
             if doc_id:
-                tasks_collection.update_one(
-                    {"_id": doc_id},
+                # Update ONLY if the task belongs to this user
+                res = tasks_collection.update_one(
+                    {"_id": doc_id, "user_id": user_id},
                     {
                         "$set": {
                             "task_title": title,
-                            "status": status,
+                            "status": status_val,
                             "completed": completed,
                             "priority": priority,
                             "category": category,
@@ -404,11 +574,29 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
                         }
                     }
                 )
-                kept_object_ids.append(doc_id)
+                if res.matched_count > 0:
+                    kept_object_ids.append(doc_id)
+                else:
+                    # If ID did not match a task owned by this user, insert as a new task for this user
+                    result = tasks_collection.insert_one({
+                        "user_id": user_id,
+                        "task_title": title,
+                        "status": status_val,
+                        "completed": completed,
+                        "priority": priority,
+                        "category": category,
+                        "notes": notes,
+                        "order": order,
+                        "date": date_str,
+                        "created_at": now,
+                        "updated_at": now
+                    })
+                    kept_object_ids.append(result.inserted_id)
             else:
                 result = tasks_collection.insert_one({
+                    "user_id": user_id,
                     "task_title": title,
-                    "status": status,
+                    "status": status_val,
                     "completed": completed,
                     "priority": priority,
                     "category": category,
@@ -420,7 +608,7 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
                 })
                 kept_object_ids.append(result.inserted_id)
 
-        # Delete any tasks that belonged to this specific date but were removed in this save
+        # Delete any tasks that belonged to this user for this date but were removed in this save
         try:
             dt_start = datetime.strptime(date_str, "%Y-%m-%d")
             dt_end = dt_start.replace(hour=23, minute=59, second=59, microsecond=999999)
@@ -440,6 +628,7 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
             })
 
         delete_query = {
+            "user_id": user_id,
             "$and": [
                 {"$or": date_match_conditions},
                 {"_id": {"$nin": kept_object_ids}}
@@ -447,8 +636,8 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
         }
         tasks_collection.delete_many(delete_query)
 
-        updated_data = fetch_tasks_for_date(date_str)
-        streak_data = calculate_user_streak()
+        updated_data = fetch_tasks_for_date(date_str, user_id=user_id)
+        streak_data = calculate_user_streak(user_id=user_id)
         return {
             "success": True,
             "message": "Tasks saved successfully!",
@@ -462,12 +651,16 @@ def save_day_tasks_api(payload: SaveDayTasksRequest):
 
 
 @app.post("/api/tasks")
-def create_task_api(payload: CreateTaskRequest):
-    """Add a single task for a specific date."""
+def create_task_api(
+    payload: CreateTaskRequest,
+    current_user: dict = Depends(auth.get_current_user_required)
+):
+    """Add a single task for a specific date owned by the authenticated user."""
     task_text = payload.task.strip()
     if not task_text:
         raise HTTPException(status_code=400, detail="Task title cannot be empty.")
 
+    user_id = current_user["id"]
     target_date = payload.date if (payload.date and is_valid_date(payload.date)) else get_today_date_str()
     priority = payload.priority if payload.priority in VALID_PRIORITIES else "Medium"
     category = payload.category if payload.category in VALID_CATEGORIES else "General"
@@ -477,6 +670,7 @@ def create_task_api(payload: CreateTaskRequest):
     try:
         tasks_collection = get_tasks_collection()
         result = tasks_collection.insert_one({
+            "user_id": user_id,
             "task_title": task_text,
             "status": "Pending",
             "completed": False,
@@ -507,12 +701,18 @@ def create_task_api(payload: CreateTaskRequest):
 
 
 @app.put("/api/tasks/{task_id}")
-def update_task_api(task_id: str, payload: UpdateTaskRequest):
-    """Update task title, priority, category, notes, or status."""
+def update_task_api(
+    task_id: str,
+    payload: UpdateTaskRequest,
+    current_user: dict = Depends(auth.get_current_user_required)
+):
+    """Update task details owned by the authenticated user."""
     if not ObjectId.is_valid(task_id):
         raise HTTPException(status_code=400, detail="Invalid task ID.")
 
+    user_id = current_user["id"]
     update_fields = {"updated_at": datetime.now(timezone.utc)}
+
     if payload.task_title is not None:
         title = payload.task_title.strip()
         if title:
@@ -534,9 +734,12 @@ def update_task_api(task_id: str, payload: UpdateTaskRequest):
 
     try:
         tasks_collection = get_tasks_collection()
-        res = tasks_collection.update_one({"_id": ObjectId(task_id)}, {"$set": update_fields})
+        res = tasks_collection.update_one(
+            {"_id": ObjectId(task_id), "user_id": user_id},
+            {"$set": update_fields}
+        )
         if res.matched_count == 0:
-            raise HTTPException(status_code=404, detail="Task not found.")
+            raise HTTPException(status_code=404, detail="Task not found or unauthorized.")
         return {"success": True, "message": "Task updated successfully."}
     except HTTPException:
         raise
@@ -546,21 +749,26 @@ def update_task_api(task_id: str, payload: UpdateTaskRequest):
 
 
 @app.post("/api/tasks/{task_id}/toggle")
-def toggle_task_api(task_id: str):
-    """Toggle task status between Pending and Completed."""
+def toggle_task_api(
+    task_id: str,
+    current_user: dict = Depends(auth.get_current_user_required)
+):
+    """Toggle task status between Pending and Completed for a task owned by the user."""
     if not ObjectId.is_valid(task_id):
         raise HTTPException(status_code=400, detail="Invalid task ID.")
 
+    user_id = current_user["id"]
+
     try:
         tasks_collection = get_tasks_collection()
-        task = tasks_collection.find_one({"_id": ObjectId(task_id)})
+        task = tasks_collection.find_one({"_id": ObjectId(task_id), "user_id": user_id})
         if not task:
-            raise HTTPException(status_code=404, detail="Task not found.")
+            raise HTTPException(status_code=404, detail="Task not found or unauthorized.")
 
         new_status = "Pending" if task.get("status") == "Completed" else "Completed"
         new_completed = (new_status == "Completed")
         tasks_collection.update_one(
-            {"_id": ObjectId(task_id)},
+            {"_id": ObjectId(task_id), "user_id": user_id},
             {"$set": {"status": new_status, "completed": new_completed, "updated_at": datetime.now(timezone.utc)}}
         )
         return {"success": True, "id": task_id, "status": new_status, "completed": new_completed}
@@ -572,16 +780,21 @@ def toggle_task_api(task_id: str):
 
 
 @app.delete("/api/tasks/{task_id}")
-def delete_task_api(task_id: str):
-    """Delete a task by ID."""
+def delete_task_api(
+    task_id: str,
+    current_user: dict = Depends(auth.get_current_user_required)
+):
+    """Delete a task owned by the authenticated user."""
     if not ObjectId.is_valid(task_id):
         raise HTTPException(status_code=400, detail="Invalid task ID.")
 
+    user_id = current_user["id"]
+
     try:
         tasks_collection = get_tasks_collection()
-        res = tasks_collection.delete_one({"_id": ObjectId(task_id)})
+        res = tasks_collection.delete_one({"_id": ObjectId(task_id), "user_id": user_id})
         if res.deleted_count == 0:
-            raise HTTPException(status_code=404, detail="Task not found.")
+            raise HTTPException(status_code=404, detail="Task not found or unauthorized.")
         return {"success": True, "message": "Task deleted successfully."}
     except HTTPException:
         raise
@@ -594,11 +807,16 @@ def delete_task_api(task_id: str):
 
 @app.post("/add")
 def add_task_form(
+    request: Request,
     task: str = Form(...),
     priority: str = Form("Medium"),
     category: str = Form("General"),
     date: Optional[str] = Form(None)
 ):
+    current_user = auth.get_current_user_optional(request)
+    if not current_user:
+        return RedirectResponse("/login", status_code=303)
+
     target_date = date if (date and is_valid_date(date)) else get_today_date_str()
     task_text = task.strip()
     if task_text:
@@ -606,6 +824,7 @@ def add_task_form(
             tasks_collection = get_tasks_collection()
             now = datetime.now(timezone.utc)
             tasks_collection.insert_one({
+                "user_id": current_user["id"],
                 "task_title": task_text,
                 "status": "Pending",
                 "completed": False,
@@ -624,17 +843,21 @@ def add_task_form(
 
 
 @app.get("/toggle/{task_id}")
-def toggle_task_form(task_id: str, date: Optional[str] = Query(None)):
+def toggle_task_form(request: Request, task_id: str, date: Optional[str] = Query(None)):
+    current_user = auth.get_current_user_optional(request)
+    if not current_user:
+        return RedirectResponse("/login", status_code=303)
+
     target_date = date if (date and is_valid_date(date)) else get_today_date_str()
     try:
         if ObjectId.is_valid(task_id):
             tasks_collection = get_tasks_collection()
-            task = tasks_collection.find_one({"_id": ObjectId(task_id)})
+            task = tasks_collection.find_one({"_id": ObjectId(task_id), "user_id": current_user["id"]})
             if task:
                 new_status = "Pending" if task.get("status") == "Completed" else "Completed"
                 new_completed = (new_status == "Completed")
                 tasks_collection.update_one(
-                    {"_id": ObjectId(task_id)},
+                    {"_id": ObjectId(task_id), "user_id": current_user["id"]},
                     {"$set": {"status": new_status, "completed": new_completed, "updated_at": datetime.now(timezone.utc)}}
                 )
     except Exception as e:
@@ -644,13 +867,17 @@ def toggle_task_form(task_id: str, date: Optional[str] = Query(None)):
 
 
 @app.get("/complete/{task_id}")
-def complete_task_form(task_id: str, date: Optional[str] = Query(None)):
+def complete_task_form(request: Request, task_id: str, date: Optional[str] = Query(None)):
+    current_user = auth.get_current_user_optional(request)
+    if not current_user:
+        return RedirectResponse("/login", status_code=303)
+
     target_date = date if (date and is_valid_date(date)) else get_today_date_str()
     try:
         if ObjectId.is_valid(task_id):
             tasks_collection = get_tasks_collection()
             tasks_collection.update_one(
-                {"_id": ObjectId(task_id)},
+                {"_id": ObjectId(task_id), "user_id": current_user["id"]},
                 {"$set": {"status": "Completed", "completed": True, "updated_at": datetime.now(timezone.utc)}}
             )
     except Exception as e:
@@ -660,12 +887,16 @@ def complete_task_form(task_id: str, date: Optional[str] = Query(None)):
 
 
 @app.get("/delete/{task_id}")
-def delete_task_form(task_id: str, date: Optional[str] = Query(None)):
+def delete_task_form(request: Request, task_id: str, date: Optional[str] = Query(None)):
+    current_user = auth.get_current_user_optional(request)
+    if not current_user:
+        return RedirectResponse("/login", status_code=303)
+
     target_date = date if (date and is_valid_date(date)) else get_today_date_str()
     try:
         if ObjectId.is_valid(task_id):
             tasks_collection = get_tasks_collection()
-            tasks_collection.delete_one({"_id": ObjectId(task_id)})
+            tasks_collection.delete_one({"_id": ObjectId(task_id), "user_id": current_user["id"]})
     except Exception as e:
         print(f"Error deleting task: {e}")
 
