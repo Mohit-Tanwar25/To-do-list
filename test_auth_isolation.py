@@ -254,3 +254,24 @@ def test_google_auth_endpoint_redirection():
         assert "response_type=code" in resp.headers["location"]
     else:
         assert "login" in resp.headers["location"]
+
+
+def test_login_page_renders():
+    """Test that login page renders with HTTP 200 and expected markup when unauthenticated."""
+    fresh_client = TestClient(app, follow_redirects=False)
+    resp = fresh_client.get("/login")
+    assert resp.status_code == 200
+    assert "TaskMaster" in resp.text
+    assert "Sign In" in resp.text or "Welcome back" in resp.text
+
+
+def test_custom_account_dev_login():
+    """Test dev login with a custom user identifier."""
+    resp = client.get("/auth/dev-login?account=sarah.connor@example.com&name=Sarah")
+    assert resp.status_code == 303
+    token = resp.cookies.get(auth.SESSION_COOKIE_NAME)
+    assert token is not None
+    user = auth.decode_session_token(token)
+    assert user["name"] == "Sarah"
+    assert user["email"] == "sarah.connor@example.com"
+
