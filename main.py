@@ -27,6 +27,9 @@ DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 VALID_CATEGORIES = ["General", "Work", "Personal", "Study", "Health", "Finance"]
 VALID_PRIORITIES = ["High", "Medium", "Low"]
 
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+ALLOW_DEV_LOGIN = os.getenv("ALLOW_DEV_LOGIN", "true" if ENVIRONMENT != "production" else "false").lower() in ("true", "1", "yes")
+
 
 def get_today_date_str() -> str:
     """Returns the current date in YYYY-MM-DD format (UTC)."""
@@ -314,6 +317,7 @@ def login_page(request: Request, error: Optional[str] = None, message: Optional[
         name="login.html",
         context={
             "google_configured": auth.is_google_auth_configured(),
+            "allow_dev_login": ALLOW_DEV_LOGIN,
             "error": error,
             "message": message
         }
@@ -394,6 +398,12 @@ def dev_login(
     Development/Testing helper login to easily switch between test accounts
     (e.g., Account A vs Account B) without requiring active Google credentials during local testing.
     """
+    if not ALLOW_DEV_LOGIN and auth.is_google_auth_configured():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo login is disabled in production environment."
+        )
+
     account_key = account.strip().lower()
     if account_key == "user_a" or account_key == "a":
         dev_profile = {
